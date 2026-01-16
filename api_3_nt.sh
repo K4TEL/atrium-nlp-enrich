@@ -1,9 +1,8 @@
 #!/bin/bash
 source ./api_util/api_common.sh
 
-
 echo "=========================================="
-echo " STEP 3: NAMETAG PROCESSING"
+echo " STEP 3: NAMETAG PROCESSING (Per-Page Output)"
 echo " Model: $MODEL_NAMETAG"
 echo "=========================================="
 
@@ -16,40 +15,52 @@ for conllu_file in "$WORK_DIR/UDPIPE"/*.conllu; do
     [ -e "$conllu_file" ] || continue
 
     filename=$(basename "$conllu_file")
+    basename_no_ext="${filename%.conllu}"
 
-    final_output="$OUTPUT_DIR/NE/${filename%.conllu}.tsv"
-    temp_output="${final_output}.tmp"
+    # Create a specific directory for this document's pages
+    doc_output_dir="$OUTPUT_DIR/NE/$basename_no_ext"
 
-    # Check if already done
-    if [ -s "$final_output" ]; then continue; fi
+    # Skip if directory exists and is not empty
+    if [ -d "$doc_output_dir" ] && [ "$(ls -A "$doc_output_dir")" ]; then
+        continue
+    fi
 
-    log " -> Tagging: $filename"
+    mkdir -p "$doc_output_dir"
+    log " -> Tagging: $filename (Page split in $doc_output_dir)"
+
+    # 1. PREPARE CLEAN INPUT
+    clean_input="${WORK_DIR}/temp_clean_${filename}"
+    sed '/^# generator/d; /^# udpipe_model/d' "$conllu_file" > "$clean_input"
+
     resp_file="$WORK_DIR/nametag_response_${filename}.json"
 
-    # --- DEBUG VERSION OF THE CALL ---
+    # 2. CALL API
     if api_call_with_retry "NameTag" "$NAMETAG_URL" "$resp_file" \
-        -F "data=@${conllu_file}" -F "input=conllu-ne" -F "output=conll" \
+        -F "data=@${clean_input}" -F "input=conllu" -F "output=conll" \
         -F "model=${MODEL_NAMETAG}"; then
 
-        parse_json_result "$resp_file" > "$temp_output"
+        # 3. PARSE JSON & WRITE PER-PAGE FILES (Using Helper)
+        python3 api_util/nametag.py \
+            "$conllu_file" \
+            "$resp_file" \
+            "$doc_output_dir" \
+            "$basename_no_ext"
 
-        if [ -s "$temp_output" ]; then
-            mv "$temp_output" "$final_output"
-            ((count++))
-        else
-            rm -f "$temp_output"
-        fi
+        ((count++))
     else
-        # !!! ADDED DEBUGGING !!!
         echo "=============================="
         echo "API ERROR RESPONSE CONTENT:"
         cat "$resp_file"
         echo "=============================="
     fi
-    # ---------------------------------
+
+    # 4. CLEAN UP
+    rm -f "$clean_input"
+    rm -f "$resp_file"
+
     rate_limit
 done
 
-log "Finished. Tagged $count new documents."
+log "Finished. Processed $count documents."
 echo "------------------------------------------"
 echo "Done. Please run ./api_4_stats.sh next."
