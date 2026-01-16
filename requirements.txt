@@ -1,0 +1,4 @@
+regex
+configparser
+pandas
+tqdm
