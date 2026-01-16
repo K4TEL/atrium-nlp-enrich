@@ -6,7 +6,7 @@ echo " STEP 2: UDPIPE PROCESSING"
 echo " Model: $MODEL_UDPIPE"
 echo "=========================================="
 
-mkdir -p "$WORK_DIR/UDPIPE_INTERMEDIATE" "$WORK_DIR/CHUNKS"
+mkdir -p "$WORK_DIR/UDPIPE" "$WORK_DIR/CHUNKS"
 MANIFEST="$WORK_DIR/manifest.tsv"
 
 if [ ! -f "$MANIFEST" ]; then
@@ -41,7 +41,7 @@ while IFS=$'\t' read -r doc_id page_num file_path; do
 
         # 2. Setup New Document
         safe_doc_id=$(basename "$doc_id")
-        final_conllu="$WORK_DIR/UDPIPE_INTERMEDIATE/${safe_doc_id}.conllu"
+        final_conllu="$WORK_DIR/UDPIPE/${safe_doc_id}.conllu"
         current_temp_file="${final_conllu}.tmp"
 
         if [ -s "$final_conllu" ]; then
