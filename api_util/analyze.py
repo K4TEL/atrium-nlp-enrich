@@ -11,7 +11,7 @@ csv.field_size_limit(sys.maxsize)
 # --- CNEC 2.0 Type Hierarchy Mapping ---
 # Based on: https://ufal.mff.cuni.cz/~strakova/cnec2.0/ne-type-hierarchy.pdf
 CNEC_TYPE_MAP = {
-    # a: Numbers, addresses, time (Super-category, rarely used directly)
+    # a: Numbers, addresses, time
     "a": "Address/Number/Time (General)",
     "A": "Complex Address/Number/Time",
     "ah": "Street address",
@@ -21,7 +21,7 @@ CNEC_TYPE_MAP = {
     # g: Geographical names
     "g": "Geographical name (General)",
     "G": "Geographical name (General)",
-    "g_": "Geographical name (General)",  # Handling underscore variants
+    "g_": "Geographical name (General)",
     "gu": "Settlement name (City/Town)",
     "gl": "Nature/Landscape name (Mountain/River)",
     "gq": "Urban geographical name (Street/Square)",
@@ -29,7 +29,7 @@ CNEC_TYPE_MAP = {
     "gs": "Super-terrestrial name (Star/Planet)",
     "gc": "States/Provinces/Regions",
     "gt": "Continents",
-    "gh": "Hydronym (Bodies of water)",  # Sometimes distinct in variations
+    "gh": "Hydronym (Bodies of water)",
 
     # i: Institutions
     "i": "Institution name (General)",
@@ -40,12 +40,11 @@ CNEC_TYPE_MAP = {
     "io": "Organization/Society",
     "ic": "Cult/Educational institution",
 
-
-# m: Media names
+    # m: Media names
     "m": "Media name (General)",
     "mn": "Periodical name (Newspaper/Magazine)",
     "ms": "Radio/TV station",
-    "mi": "Internet links",  # ADDED
+    "mi": "Internet links",
 
     # o: Artifact names
     "o": "Artifact name (General)",
@@ -53,7 +52,7 @@ CNEC_TYPE_MAP = {
     "oa": "Cultural artifact (Book/Painting)",
     "oe": "Measure unit",
     "om": "Currency",
-    "or": "Directives, norms",  # CORRECTED (was Product/Ware)
+    "or": "Directives, norms",
     "op": "Product (General)",
 
     # p: Personal names
@@ -62,10 +61,10 @@ CNEC_TYPE_MAP = {
     "P": "Complex personal names",
     "pf": "First name",
     "ps": "Surname",
-    "pm": "Second name",       # CORRECTED (was Family name)
+    "pm": "Second name",
     "ph": "Nickname/Pseudonym",
     "pc": "Inhabitant name",
-    "pd": "Academic titles",    # CORRECTED (was Group of people)
+    "pd": "Academic titles",
     "pp": "Relig./myth persons",
     "me": "Email address",
 
@@ -76,7 +75,6 @@ CNEC_TYPE_MAP = {
     "th": "Hour",
     "tm": "Month",
     "ty": "Year",
-    # "tc": "Century",          # REMOVED (Merged into 'no')
     "tf": "Holiday/Feast",
     "tt": "Time block",
 
@@ -94,7 +92,6 @@ CNEC_TYPE_MAP = {
     # General / Fallback
     "unk": "Unknown Type",
     "O": "None",
-
     "C": "Complex bibliographic expression",
 }
 
@@ -103,9 +100,6 @@ def parse_tag_and_type(raw_tag_field):
     """
     Parses a raw tag field, extracts the CNEC type code,
     and returns the BIO tag and the Full Description.
-
-    Example Input: "B-gu" -> Returns: ("B-gu", "Settlement name (City/Town)")
-    Example Input: "NE=B-ps|..." -> Returns: ("B-ps", "Surname")
     """
     # 1. Handle CoNLL-U MISC column format (Key=Value)
     if "NE=" in raw_tag_field:
@@ -115,7 +109,6 @@ def parse_tag_and_type(raw_tag_field):
                 break
 
     # 2. Handle Multi-layer tags (e.g., "B-P|B-pf")
-    # We take the first tag (index 0) as the primary entity layer.
     primary_tag = raw_tag_field.split('|')[0]
 
     # 3. Extract purely the BIO tag and the Type
@@ -123,27 +116,27 @@ def parse_tag_and_type(raw_tag_field):
         return "O", None
 
     if primary_tag.startswith("B-") or primary_tag.startswith("I-"):
-        # Extract type code: "B-per" -> "per"
-        # Handle cases like "B-g_" or just "B-"
         if len(primary_tag) > 2:
             short_code = primary_tag[2:]
         else:
             short_code = "unk"
 
-        # Look up the full name in the dictionary
         full_type_name = CNEC_TYPE_MAP.get(short_code, f"Unknown Code ({short_code})")
-
         return primary_tag, full_type_name
 
     return "O", None
 
 
-def get_entities(path):
+def get_entities_by_page(path):
     """
-    Parses a file and extracts Named Entities.
-    Returns a list of tuples: (Entity_Text, Entity_Full_Type_Name)
+    Parses a file and extracts Named Entities grouped by page.
+    Page boundaries are detected via '# sent_id = 1'.
+
+    Returns a dict: { page_number (int): [ (Entity_Text, Entity_Full_Type_Name), ... ] }
     """
-    entities = []
+    pages = {}
+    curr_page = 0
+
     curr_toks = []
     curr_type = None
 
@@ -151,38 +144,47 @@ def get_entities(path):
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
+
+                # --- Page Detection ---
+                # Check for standard CoNLL-U sentence ID reset which implies a new page in this pipeline
+                if line.startswith('# sent_id'):
+                    parts = line.split('=', 1)
+                    if len(parts) > 1 and parts[1].strip() == '1':
+                        curr_page += 1
+                        # Note: We assume entities do not cross sentence/page boundaries.
+                        # If an entity was open, the logic below (start of new B tag or O)
+                        # effectively closes it on the page where it started.
+                    continue
+
                 if not line or line.startswith('#'):
                     continue
 
-                # Flexible splitting:
-                # Attempt split by tab first (standard ConLL)
-                parts = line.split('\t')
+                # Ensure we are on at least page 1 if we hit data tokens
+                if curr_page == 0:
+                    curr_page = 1
 
-                # If tab split fails (len < 2), try whitespace split (dirty files)
+                # --- Token Parsing ---
+                parts = line.split('\t')
                 if len(parts) < 2:
                     parts = line.split()
 
                 if len(parts) < 2:
                     continue
 
-                # Determine Token and Tag columns
-                # 2-col format: Tok, Tag
-                # 10-col format (CoNLL-U): ID, Tok, ..., Tag (last)
                 if len(parts) == 2:
                     tok = parts[0]
                     raw_tag = parts[1]
                 else:
-                    tok = parts[1]  # Usually 2nd column is token in 10-col
-                    raw_tag = parts[-1]  # Last column usually NE tag in this context
+                    tok = parts[1]
+                    raw_tag = parts[-1]
 
-                # Parse the specific tag format
                 tag, full_etype = parse_tag_and_type(raw_tag)
 
                 # --- BIO LOGIC ---
                 if tag.startswith('B') or (tag != 'O' and not curr_toks):
                     # Save previous entity if exists
                     if curr_toks:
-                        entities.append((" ".join(curr_toks), curr_type))
+                        pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
 
                     # Start new entity
                     curr_toks = [tok]
@@ -191,23 +193,22 @@ def get_entities(path):
                 elif tag.startswith('I') and curr_toks:
                     # Continue entity
                     curr_toks.append(tok)
-                    # Note: We assume the type doesn't change inside an entity
 
                 else:  # Tag is O
                     if curr_toks:
-                        entities.append((" ".join(curr_toks), curr_type))
+                        pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
                         curr_toks = []
                         curr_type = None
 
-        # Flush remaining entity
+        # Flush remaining entity at end of file
         if curr_toks:
-            entities.append((" ".join(curr_toks), curr_type))
+            pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
 
     except Exception as e:
         print(f"[Error] parsing {os.path.basename(path)}: {e}", file=sys.stderr)
-        return []
+        return {}
 
-    return entities
+    return pages
 
 
 def main():
@@ -225,8 +226,8 @@ def main():
     with open(stats_file, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.writer(f)
 
-        # Header: file, ne1, type1, cnt-1, ne2, type2, cnt-2 ...
-        header = ["file"] + [x for i in range(1, top_n + 1) for x in (f"ne{i}", f"type{i}", f"cnt-{i}")]
+        # Updated Header: Added 'page' column
+        header = ["file", "page"] + [x for i in range(1, top_n + 1) for x in (f"ne{i}", f"type{i}", f"cnt-{i}")]
         w.writerow(header)
 
         if os.path.exists(input_dir):
@@ -235,24 +236,34 @@ def main():
             count_processed = 0
             for fn in files:
                 full_path = os.path.join(input_dir, fn)
-                all_entities = get_entities(full_path)
 
-                if not all_entities:
+                # Get entities grouped by page
+                pages_data = get_entities_by_page(full_path)
+
+                if not pages_data:
                     continue
 
-                # Count unique (Text, Type) pairs
-                c = Counter(all_entities).most_common(top_n)
+                # Iterate through pages in order
+                for page_num in sorted(pages_data.keys()):
+                    entities = pages_data[page_num]
 
-                row = [fn.split('.')[0]]  # Base filename without extension
-                for (ne_text, ne_type), cnt in c:
-                    row.extend([ne_text, ne_type, cnt])
+                    if not entities:
+                        continue
 
-                # Padding
-                missing = top_n - len(c)
-                if missing > 0:
-                    row.extend(["", "", 0] * missing)
+                    # Count unique (Text, Type) pairs for this page
+                    c = Counter(entities).most_common(top_n)
 
-                w.writerow(row)
+                    row = [fn.split('.')[0], page_num]
+                    for (ne_text, ne_type), cnt in c:
+                        row.extend([ne_text, ne_type, cnt])
+
+                    # Padding
+                    missing = top_n - len(c)
+                    if missing > 0:
+                        row.extend(["", "", 0] * missing)
+
+                    w.writerow(row)
+
                 count_processed += 1
 
             print(f"[Stats] Processed {count_processed} files.")

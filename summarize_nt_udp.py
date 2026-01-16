@@ -171,12 +171,15 @@ def write_page_csv(rows, output_dir, page_id, file_counter):
     base_header = ['page_id', 'token', 'lemma', 'position', 'nameTag']
     header = base_header + sorted(list(feature_keys)) + sorted(list(misc_keys))
 
+    document_name = os.path.basename(output_dir)
+
     # Construct filename
+    # If page_id is simple (e.g., "page_1"), use it.
     safe_id = sanitize_filename(page_id)
     if not safe_id or safe_id == "unknown":
-        filename = f"page_{file_counter:03d}.csv"
+        filename = f"{document_name}-{file_counter:03d}.csv"
     else:
-        filename = f"{safe_id}.csv"
+        filename = f"{document_name}-{safe_id}.csv"
 
     output_path = os.path.join(output_dir, filename)
 
@@ -191,7 +194,7 @@ def write_page_csv(rows, output_dir, page_id, file_counter):
 
 def process_merged_file_into_pages(merged_filepath, output_subdir):
     """
-    Reads a merged CoNLL-U file, detects page boundaries (newdoc),
+    Reads a merged CoNLL-U file, detects page boundaries based on sent_id = 1,
     and writes separate CSV files for each page into output_subdir.
     """
     print(f"[Processing] Splitting {os.path.basename(merged_filepath)} into pages...")
@@ -199,40 +202,44 @@ def process_merged_file_into_pages(merged_filepath, output_subdir):
     current_rows = []
     # Initialize defaults
     page_counter = 0
-    current_page_id = "unknown"
 
     with open(merged_filepath, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
 
-            # 1. Detect Page Boundary
-            if line.startswith('# newdoc'):
-                if current_rows:
+            # 1. Detect Page Boundary via sent_id
+            if line.startswith('# sent_id'):
+                # Check if this is the start of a new page (id=1)
+                parts = line.split('=', 1)
+                if len(parts) > 1 and parts[1].strip() == '1':
+                    # If we have accumulated rows from the PREVIOUS page, write them now
+                    if current_rows:
+                        # The counter currently holds the number for the accumulated rows
+                        page_id = page_counter
+                        write_page_csv(current_rows, output_subdir, page_id, page_counter)
+                        current_rows = []
+
+                    # Increment for the NEW page
                     page_counter += 1
-                    write_page_csv(current_rows, output_subdir, current_page_id, page_counter)
-                    current_rows = []
 
-                if 'id =' in line:
-                    parts = line.split('id =')
-                    if len(parts) > 1:
-                        current_page_id = parts[1].strip()
-                    else:
-                        current_page_id = f"page_{page_counter + 1}"
-                else:
-                    current_page_id = f"page_{page_counter + 1}"
-
-                continue
-
+            # Skip comments (including newdoc/newpar)
             if line.startswith('#') or not line:
                 continue
 
+            # Parse columns
             parts = line.split('\t')
             if len(parts) < 10:
                 continue
 
             token_id = parts[0]
+            # Skip multiword ranges (e.g. 1-2)
             if '-' in token_id:
                 continue
+
+            # If we started parsing tokens but page_counter is still 0 (e.g., file didn't start with sent_id=1),
+            # force it to 1 to capture the content.
+            if page_counter == 0:
+                page_counter = 1
 
             token = parts[1]
             lemma = parts[2]
@@ -243,7 +250,7 @@ def process_merged_file_into_pages(merged_filepath, output_subdir):
             misc = parse_misc(misc_str)
 
             row = {
-                'page_id': current_page_id,
+                'page_id': page_counter,
                 'token': token,
                 'lemma': lemma,
                 'position': token_id,
@@ -259,9 +266,10 @@ def process_merged_file_into_pages(merged_filepath, output_subdir):
 
             current_rows.append(row)
 
+    # Write the final page if any rows remain
     if current_rows:
-        page_counter += 1
-        write_page_csv(current_rows, output_subdir, current_page_id, page_counter)
+        page_id = page_counter
+        write_page_csv(current_rows, output_subdir, page_id, page_counter)
 
 
 def process_pipeline(conllu_dir, tsv_dir, output_root):

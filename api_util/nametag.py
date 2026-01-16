@@ -45,7 +45,8 @@ def parse_nametag_response():
     file_base = sys.argv[4]
 
     # --- PART A: Map Sentences to Page Numbers ---
-    # We read the original CoNLL-U file to track '# newdoc' page breaks
+    # We read the original CoNLL-U file.
+    # The user specifies that a new page starts whenever sent_id = 1.
     sent_to_page = []
     current_page = 0
 
@@ -55,12 +56,25 @@ def parse_nametag_response():
                 line = line.strip()
                 if not line: continue
 
-                if line.startswith('# newdoc'):
-                    current_page += 1
-                elif line.startswith('# sent_id'):
-                    # If file starts without newdoc, assume page 1
-                    if current_page == 0: current_page = 1
+                # We look specifically for the sent_id field
+                if line.startswith('# sent_id'):
+                    # Parse the value after '='
+                    # Example: "# sent_id = 1"
+                    parts = line.split('=', 1)
+                    if len(parts) > 1:
+                        val = parts[1].strip()
+                        # If sent_id resets to 1, we treat it as a new page
+                        if val == '1':
+                            current_page += 1
+
+                    # Fallback: If the file starts and current_page is still 0
+                    # (e.g. if the first sent_id isn't exactly "1" or loop logic quirks),
+                    # start at 1.
+                    if current_page == 0:
+                        current_page = 1
+
                     sent_to_page.append(current_page)
+
     except Exception as e:
         sys.stderr.write(f"Error reading original CoNLL-U: {e}\n")
         sys.exit(1)
