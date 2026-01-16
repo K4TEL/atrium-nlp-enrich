@@ -1,12 +1,8 @@
 # 📦 ALTO XML Files Postprocessing Pipeline - NLP Enrichment
 
-This project provides a complete workflow for processing ALTO XML files. It takes raw ALTO 
-XMLs and transforms them into structured statistics tables, performs text classification, 
-filters low-quality OCR results, and extracts high-level linguistic features like 
-Named Entities (NER), CONLL-U files with lemmas & part-of-sentence tags, and keywords (KER).
-
-The core of the quality filtering relies on language identification and perplexity measures 
-to identify and categorize noisy or unreliable OCR output.
+This project provides a workflow for processing ALTO XML files with NLP services. It takes raw ALTO 
+XMLs and transforms them into structured statistics tables and extracts high-level linguistic features like 
+Named Entities (NER), CONLL-U files with lemmas & part-of-sentence tags.
 
 ---
 
@@ -25,10 +21,6 @@ Before you begin, set up your environment.
     cd alto-tools
     pip install .
     cd .. 
-    ```
-4.  Download the FastText model 😊 for language identification:
-    ```bash
-    wget (https://huggingface.co/facebook/fasttext-language-identification/resolve/main/model.bin) -O lid.176.bin
     ```
 You are now ready to start the workflow.
 
@@ -74,6 +66,15 @@ It reads the CSV with stats and process paths into output text files.
 * **Output:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
 
 
+    <output_dir>
+    ├── <file1>
+        ├── <file1>-<page>.txt 
+        └── ...
+    ├── <file2>
+        ├── <file2>-<page>.txt 
+        └── ...
+    └── ...
+
 ### ▶ Step 2: Extract NER and CONLL-U
 
 This stage performs advanced NLP analysis using external APIs (Lindat/CLARIAH-CZ) to generate Universal Dependencies (CoNLL-U) and Named Entity Recognition (NER) data.
@@ -96,44 +97,44 @@ WORD_CHUNK_LIMIT=900           # Word limit per API call
 
 Run the following scripts in sequence. Each script utilizes [api_common.sh](api_util/api_common.sh) 📎 for logging, retry logic, and error handling.
 
-##### I. Generate Manifest
+##### 1. Generate Manifest
 
 Maps input text files to document IDs and page numbers to ensure correct processing order.
 ```bash
-./api_manifest.sh
+./api_1_manifest.sh
 ```
 
 * **Input:** `INPUT_DIR` (raw text files in subdirectories).
 * **Output:** `processing_work/manifest.tsv`.
 
-##### II. UDPipe Processing (Morphology & Syntax)
+##### 2.UDPipe Processing (Morphology & Syntax)
 
 Sends text to the UDPipe API. Large pages are automatically split into chunks (default 900 words) using 
 [chunk.py](api_util/chunk.py) 📎 to respect API limits, then merged back into valid CoNLL-U files.
 ```bash
-./api_udp.sh
+./api_2_udp.sh
 ```
 
 * **Output:** `processing_work/UDPIPE_INTERMEDIATE/*.conllu` (Intermediate CoNLL-U files).
 
-##### III. NameTag Processing (NER)
+##### 3. NameTag Processing (NER)
 
 Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
 (NE) directly into the syntax trees.
 ```bash
-./api_nt.sh
+./api_3_nt.sh
 ```
 
 * **Output:** `OUTPUT_DIR/CONLLU_FINAL/` (Final annotated files).
 
-##### IV. Generate Statistics
+##### 4. Generate Statistics
 
 Aggregates the entity counts from the final CoNLL-U files into a summary CSV. It utilizes 
 [analyze.py](api_util/analyze.py) 📎 to map complex 
 CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geographical name", "First name", "Company/Firm").
 
 ```bash
-./api_stats.sh
+./api_4_stats.sh
 ```
 
 * **Output:** `OUTPUT_DIR/STATS/summary_ne_counts.csv`.
