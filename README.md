@@ -120,6 +120,8 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate CoNLL-U files).
 
+* [UDPIPE](data_samples%2FUDPIPE) 📎 example output, CONLLU per-document file
+
 ##### 3. NameTag Processing (NER)
 
 Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
@@ -129,7 +131,10 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 ./api_3_nt.sh
 ```
 
-* **Output:** `OUTPUT_DIR/NE/` (Final annotated files).
+* **Output:** `OUTPUT_DIR/NE/` (Final annotated files)
+
+* [NE](data_samples%2FNE) 📎 example output, per-page TSV files with NE annotations
+
 
 ##### 4. Generate Statistics
 
@@ -143,7 +148,9 @@ CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geo
 
 * **Output:** `OUTPUT_DIR/summary_ne_counts.csv`.
 
-Example: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
+* Example summary table: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
+
+* [UDP_NE](data_samples%2FUDP_NE) 📎 example output, per-page CSV tables with NE and UDPipe features
 
 #### Output Structure
 
