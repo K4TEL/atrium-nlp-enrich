@@ -96,164 +96,144 @@ CNEC_TYPE_MAP = {
 }
 
 
-def parse_tag_and_type(raw_tag_field):
+def parse_tag_and_type_tsv(raw_tag):
     """
-    Parses a raw tag field, extracts the CNEC type code,
-    and returns the BIO tag and the Full Description.
+    Parses a raw BIO tag (e.g., "B-p", "I-p", "O").
+    Returns (BIO_Tag, Full_Type_Name).
     """
-    # 1. Handle CoNLL-U MISC column format (Key=Value)
-    if "NE=" in raw_tag_field:
-        for feat in raw_tag_field.split('|'):
-            if feat.startswith("NE="):
-                raw_tag_field = feat.split("=")[1]
-                break
-
-    # 2. Handle Multi-layer tags (e.g., "B-P|B-pf")
-    primary_tag = raw_tag_field.split('|')[0]
-
-    # 3. Extract purely the BIO tag and the Type
-    if primary_tag == "O":
+    if raw_tag == "O" or not raw_tag:
         return "O", None
 
-    if primary_tag.startswith("B-") or primary_tag.startswith("I-"):
-        if len(primary_tag) > 2:
-            short_code = primary_tag[2:]
-        else:
-            short_code = "unk"
+    # Handle B-type / I-type
+    if raw_tag.startswith("B-") or raw_tag.startswith("I-"):
+        # Strip prefix to get the short code (e.g., "p" from "B-p")
+        # Handle cases like "B-P|B-pf" by taking the first one
+        primary = raw_tag.split('|')[0]
+        prefix = primary[:2]  # B- or I-
+        short_code = primary[2:]
 
         full_type_name = CNEC_TYPE_MAP.get(short_code, f"Unknown Code ({short_code})")
-        return primary_tag, full_type_name
+        return primary, full_type_name
 
     return "O", None
 
 
-def get_entities_by_page(path):
+def get_entities_from_tsv(tsv_path):
     """
-    Parses a file and extracts Named Entities grouped by page.
-    Page boundaries are detected via '# sent_id = 1'.
-
-    Returns a dict: { page_number (int): [ (Entity_Text, Entity_Full_Type_Name), ... ] }
+    Parses a NameTag TSV file (Header + Word\tTag\tNE).
+    Returns a list of (Entity_Text, Entity_Full_Type_Name).
     """
-    pages = {}
-    curr_page = 0
-
+    entities = []
     curr_toks = []
     curr_type = None
 
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(tsv_path, 'r', encoding='utf-8') as f:
+            # Skip header if present
+            first_line = next(f, "").strip()
+            # If the file is empty or just header
+            if not first_line: return []
+
+            # Reset pointer if it wasn't a header (unlikely given nametag.py, but safe)
+            if not first_line.startswith("Word"):
+                f.seek(0)
+
             for line in f:
                 line = line.strip()
+                if not line: continue
 
-                # --- Page Detection ---
-                # Check for standard CoNLL-U sentence ID reset which implies a new page in this pipeline
-                if line.startswith('# sent_id'):
-                    parts = line.split('=', 1)
-                    if len(parts) > 1 and parts[1].strip() == '1':
-                        curr_page += 1
-                        # Note: We assume entities do not cross sentence/page boundaries.
-                        # If an entity was open, the logic below (start of new B tag or O)
-                        # effectively closes it on the page where it started.
-                    continue
-
-                if not line or line.startswith('#'):
-                    continue
-
-                # Ensure we are on at least page 1 if we hit data tokens
-                if curr_page == 0:
-                    curr_page = 1
-
-                # --- Token Parsing ---
                 parts = line.split('\t')
-                if len(parts) < 2:
-                    parts = line.split()
+                if len(parts) < 2: continue
 
-                if len(parts) < 2:
-                    continue
+                tok = parts[0]
+                tag_raw = parts[1]  # "B-per"
 
-                if len(parts) == 2:
-                    tok = parts[0]
-                    raw_tag = parts[1]
-                else:
-                    tok = parts[1]
-                    raw_tag = parts[-1]
-
-                tag, full_etype = parse_tag_and_type(raw_tag)
+                # Use our parser
+                bio_tag, full_etype = parse_tag_and_type_tsv(tag_raw)
 
                 # --- BIO LOGIC ---
-                if tag.startswith('B') or (tag != 'O' and not curr_toks):
-                    # Save previous entity if exists
+                if bio_tag.startswith('B') or (bio_tag != 'O' and not curr_toks):
+                    # Close previous
                     if curr_toks:
-                        pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
-
-                    # Start new entity
+                        entities.append((" ".join(curr_toks), curr_type))
+                    # Start new
                     curr_toks = [tok]
                     curr_type = full_etype
 
-                elif tag.startswith('I') and curr_toks:
-                    # Continue entity
+                elif bio_tag.startswith('I') and curr_toks:
                     curr_toks.append(tok)
 
-                else:  # Tag is O
+                else:  # O
                     if curr_toks:
-                        pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
+                        entities.append((" ".join(curr_toks), curr_type))
                         curr_toks = []
                         curr_type = None
 
-        # Flush remaining entity at end of file
-        if curr_toks:
-            pages.setdefault(curr_page, []).append((" ".join(curr_toks), curr_type))
+            # Flush end
+            if curr_toks:
+                entities.append((" ".join(curr_toks), curr_type))
 
     except Exception as e:
-        print(f"[Error] parsing {os.path.basename(path)}: {e}", file=sys.stderr)
-        return {}
+        print(f"[Error] parsing {os.path.basename(tsv_path)}: {e}", file=sys.stderr)
 
-    return pages
+    return entities
+
+
+def extract_page_number(filename):
+    """Extracts '1' from 'docname-1.tsv'."""
+    match = re.search(r'-(\d+)\.tsv$', filename)
+    if match:
+        return int(match.group(1))
+    return 0
 
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: analyze.py <input_dir> <stats_file>")
+        print("Usage: analyze.py <input_ne_root_dir> <stats_file>")
         sys.exit(1)
 
-    input_dir = sys.argv[1]
+    input_root_dir = sys.argv[1]
     stats_file = sys.argv[2]
     top_n = 20
 
     os.makedirs(os.path.dirname(stats_file), exist_ok=True)
-    print(f"[Stats] Aggregating entities from: {input_dir}")
+    print(f"[Stats] Scanning entities in: {input_root_dir}")
 
     with open(stats_file, 'w', newline='', encoding='utf-8-sig') as f:
         w = csv.writer(f)
-
-        # Updated Header: Added 'page' column
         header = ["file", "page"] + [x for i in range(1, top_n + 1) for x in (f"ne{i}", f"type{i}", f"cnt-{i}")]
         w.writerow(header)
 
-        if os.path.exists(input_dir):
-            files = sorted([fn for fn in os.listdir(input_dir) if fn.endswith(".conllu")])
+        # Iterate over document directories in NE/
+        if os.path.exists(input_root_dir):
+            # Get list of subdirectories
+            doc_dirs = sorted([d for d in os.listdir(input_root_dir) if os.path.isdir(os.path.join(input_root_dir, d))])
 
             count_processed = 0
-            for fn in files:
-                full_path = os.path.join(input_dir, fn)
 
-                # Get entities grouped by page
-                pages_data = get_entities_by_page(full_path)
+            for doc_name in doc_dirs:
+                doc_path = os.path.join(input_root_dir, doc_name)
 
-                if not pages_data:
+                # Find all TSV files for this document
+                tsv_files = sorted([f for f in os.listdir(doc_path) if f.endswith(".tsv")])
+
+                if not tsv_files:
                     continue
 
-                # Iterate through pages in order
-                for page_num in sorted(pages_data.keys()):
-                    entities = pages_data[page_num]
+                for tsv_file in tsv_files:
+                    full_path = os.path.join(doc_path, tsv_file)
+                    page_num = extract_page_number(tsv_file)
+
+                    # Extract entities for this specific page
+                    entities = get_entities_from_tsv(full_path)
 
                     if not entities:
                         continue
 
-                    # Count unique (Text, Type) pairs for this page
+                    # Count unique (Text, Type) pairs
                     c = Counter(entities).most_common(top_n)
 
-                    row = [fn.split('.')[0], page_num]
+                    row = [doc_name, page_num]
                     for (ne_text, ne_type), cnt in c:
                         row.extend([ne_text, ne_type, cnt])
 
@@ -266,7 +246,7 @@ def main():
 
                 count_processed += 1
 
-            print(f"[Stats] Processed {count_processed} files.")
+            print(f"[Stats] Processed {count_processed} documents.")
             print(f"[Stats] Saved to {stats_file}")
 
 

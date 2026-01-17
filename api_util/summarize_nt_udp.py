@@ -3,72 +3,69 @@ import os
 import argparse
 from pathlib import Path
 import csv
-import glob
 import re
+import glob
 
 # Increase CSV field size limit just in case
 csv.field_size_limit(sys.maxsize)
 
 
 def load_config(config_path="api_config.env"):
-    """
-    Manually parses a simple .env file to set environment variables
-    so we don't depend on python-dotenv.
-    """
     if not os.path.exists(config_path):
-        # It's okay if file doesn't exist, we might have args passed manually
         return
-
     with open(config_path, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
-            # Skip comments and empty lines
-            if not line or line.startswith('#'):
+            if not line or line.startswith('#') or '=' not in line:
                 continue
-
-            if '=' in line:
-                key, value = line.split('=', 1)
-                key = key.strip()
-                # Clean quotes if present
-                value = value.strip().strip('"').strip("'")
-
-                # Set env var if not already set (shell priority)
-                if key not in os.environ:
-                    os.environ[key] = value
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key not in os.environ:
+                os.environ[key] = value
 
 
 def sanitize_filename(name):
-    """
-    Sanitizes a string to be safe for use as a filename.
-    Replaces characters like :, /, \ with underscores.
-    """
-    safe_name = re.sub(r'[\\/*?:"<>|]', '_', name)
-    return safe_name
+    return re.sub(r'[\\/*?:"<>|]', '_', name)
 
 
-def merge_single_pair(conllu_path, tsv_path, output_path):
+def get_sorted_tsv_content(doc_tsv_dir):
     """
-    Merges a single pair of CoNLL-U and TSV files.
-    Reads tokens from TSV and inserts NER tags into the MISC column of CoNLL-U.
+    Reads all .tsv files in the document directory, sorts them by page number
+    (assuming format doc-PAGE.tsv), and returns a single list of tokens/tags.
     """
-    tsv_data = []
-    try:
-        with open(tsv_path, 'r', encoding='utf-8') as f_tsv:
-            for line_num, line in enumerate(f_tsv, 1):
+    all_data = []
+
+    files = list(Path(doc_tsv_dir).glob("*.tsv"))
+
+    def sort_key(filepath):
+        try:
+            match = re.search(r'-(\d+)\.tsv$', filepath.name)
+            if match:
+                return int(match.group(1))
+            return 0
+        except:
+            return 0
+
+    files.sort(key=sort_key)
+
+    for fpath in files:
+        with open(fpath, 'r', encoding='utf-8') as f:
+            header = next(f, None)
+            for line in f:
                 line = line.strip()
-                if not line:
-                    continue  # Skip empty lines
+                if not line: continue
 
                 parts = line.split('\t')
                 if len(parts) >= 2:
-                    tsv_data.append({'token': parts[0], 'tag': parts[1], 'line': line_num})
+                    all_data.append({'token': parts[0], 'tag': parts[1]})
                 else:
-                    # Fallback for lines with only a token
-                    tsv_data.append({'token': parts[0], 'tag': '_', 'line': line_num})
-    except FileNotFoundError:
-        print(f"Error: TSV file not found: {tsv_path}", file=sys.stderr)
-        return False
+                    all_data.append({'token': parts[0], 'tag': 'O'})
 
+    return all_data
+
+
+def merge_and_write(conllu_path, tsv_data, output_path):
     tsv_index = 0
     tsv_len = len(tsv_data)
 
@@ -79,19 +76,15 @@ def merge_single_pair(conllu_path, tsv_path, output_path):
             for line in f_conllu:
                 stripped_line = line.strip()
 
-                # Passthrough for comments and empty lines
                 if not stripped_line or stripped_line.startswith('#'):
                     f_out.write(line)
                     continue
 
                 cols = stripped_line.split('\t')
 
-                # Check for valid ID column (skip multiword tokens like 1-2)
                 if len(cols) >= 2 and '-' not in cols[0] and '.' not in cols[0]:
                     if tsv_index < tsv_len:
                         tsv_item = tsv_data[tsv_index]
-
-                        # Add tag to MISC column (column index 9)
                         new_attr = f"NER={tsv_item['tag']}"
 
                         if len(cols) > 9:
@@ -100,64 +93,44 @@ def merge_single_pair(conllu_path, tsv_path, output_path):
                             else:
                                 cols[9] += f"|{new_attr}"
                         else:
-                            # Fill missing columns if malformed
                             while len(cols) < 9:
                                 cols.append('_')
                             cols.append(new_attr)
 
-                        # Write updated line
                         f_out.write('\t'.join(cols) + '\n')
                         tsv_index += 1
                     else:
-                        # TSV ended early
                         f_out.write(line)
                 else:
-                    # Write lines that aren't standard tokens as-is
                     f_out.write(line)
 
-        print(f"[Info] Merged: {os.path.basename(conllu_path)} -> {output_path}")
         return True
 
-    except FileNotFoundError:
-        print(f"Error: CoNLL-U file not found: {conllu_path}", file=sys.stderr)
+    except Exception as e:
+        print(f"Error merging {conllu_path}: {e}", file=sys.stderr)
         return False
 
 
 def parse_features(feat_str):
-    """Parses the FEATS column (e.g., 'Case=Nom|Gender=Masc') into a dictionary."""
-    if feat_str == '_' or not feat_str:
-        return {}
-    features = {}
-    for item in feat_str.split('|'):
-        if '=' in item:
-            key, value = item.split('=', 1)
-            features[key] = value
-    return features
+    if feat_str == '_' or not feat_str: return {}
+    return {k: v for item in feat_str.split('|') if '=' in item for k, v in [item.split('=', 1)]}
 
 
 def parse_misc(misc_str):
-    """Parses the MISC column (e.g., 'NER=B-per|SpaceAfter=No') into a dictionary."""
-    if misc_str == '_' or not misc_str:
-        return {}
+    if misc_str == '_' or not misc_str: return {}
     misc = {}
     for item in misc_str.split('|'):
         if '=' in item:
-            key, value = item.split('=', 1)
-            misc[key] = value
+            k, v = item.split('=', 1)
+            misc[k] = v
         else:
-            # Handle singleton flags if any
             misc[item] = "Yes"
     return misc
 
 
 def write_page_csv(rows, output_dir, page_id, file_counter):
-    """
-    Writes a list of row dictionaries to a CSV file.
-    """
-    if not rows:
-        return
+    if not rows: return
 
-    # Collect all dynamic keys
     feature_keys = set()
     misc_keys = set()
     for r in rows:
@@ -167,187 +140,147 @@ def write_page_csv(rows, output_dir, page_id, file_counter):
             elif k.startswith('udpipe.misc.'):
                 misc_keys.add(k)
 
-    # Define Header
-    base_header = ['page_id', 'token', 'lemma', 'position', 'nameTag']
-    header = base_header + sorted(list(feature_keys)) + sorted(list(misc_keys))
+    header = ['page_id', 'token', 'lemma', 'position', 'nameTag'] + \
+             sorted(list(feature_keys)) + sorted(list(misc_keys))
 
-    document_name = os.path.basename(output_dir)
+    doc_name = os.path.basename(output_dir)
+    safe_id = sanitize_filename(str(page_id))
+    filename = f"{doc_name}-{safe_id}.csv"
 
-    # Construct filename
-    # If page_id is simple (e.g., "page_1"), use it.
-    safe_id = sanitize_filename(page_id)
-    if not safe_id or safe_id == "unknown":
-        filename = f"{document_name}-{file_counter:03d}.csv"
-    else:
-        filename = f"{document_name}-{safe_id}.csv"
-
-    output_path = os.path.join(output_dir, filename)
+    out_path = os.path.join(output_dir, filename)
 
     try:
-        with open(output_path, 'w', encoding='utf-8', newline='') as f:
+        with open(out_path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=header)
             writer.writeheader()
             writer.writerows(rows)
     except Exception as e:
-        print(f"  [Error] Failed to write {filename}: {e}", file=sys.stderr)
+        print(f"  [Error] writing {filename}: {e}", file=sys.stderr)
 
 
 def process_merged_file_into_pages(merged_filepath, output_subdir):
-    """
-    Reads a merged CoNLL-U file, detects page boundaries based on sent_id = 1,
-    and writes separate CSV files for each page into output_subdir.
-    """
-    print(f"[Processing] Splitting {os.path.basename(merged_filepath)} into pages...")
-
     current_rows = []
-    # Initialize defaults
     page_counter = 0
 
     with open(merged_filepath, 'r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
 
-            # 1. Detect Page Boundary via sent_id
             if line.startswith('# sent_id'):
-                # Check if this is the start of a new page (id=1)
                 parts = line.split('=', 1)
                 if len(parts) > 1 and parts[1].strip() == '1':
-                    # If we have accumulated rows from the PREVIOUS page, write them now
                     if current_rows:
-                        # The counter currently holds the number for the accumulated rows
-                        page_id = page_counter
-                        write_page_csv(current_rows, output_subdir, page_id, page_counter)
+                        write_page_csv(current_rows, output_subdir, page_counter, page_counter)
                         current_rows = []
-
-                    # Increment for the NEW page
                     page_counter += 1
 
-            # Skip comments (including newdoc/newpar)
             if line.startswith('#') or not line:
                 continue
 
-            # Parse columns
             parts = line.split('\t')
-            if len(parts) < 10:
+            if len(parts) < 10 or '-' in parts[0]:
                 continue
 
-            token_id = parts[0]
-            # Skip multiword ranges (e.g. 1-2)
-            if '-' in token_id:
-                continue
+            if page_counter == 0: page_counter = 1
 
-            # If we started parsing tokens but page_counter is still 0 (e.g., file didn't start with sent_id=1),
-            # force it to 1 to capture the content.
-            if page_counter == 0:
-                page_counter = 1
-
-            token = parts[1]
-            lemma = parts[2]
-            feats_str = parts[5]
-            misc_str = parts[9]
-
-            feats = parse_features(feats_str)
-            misc = parse_misc(misc_str)
+            misc = parse_misc(parts[9])
+            feats = parse_features(parts[5])
 
             row = {
                 'page_id': page_counter,
-                'token': token,
-                'lemma': lemma,
-                'position': token_id,
+                'token': parts[1],
+                'lemma': parts[2],
+                'position': parts[0],
                 'nameTag': misc.get('NER', ''),
             }
-
-            for k, v in feats.items():
-                row[f'udpipe.feats.{k}'] = v
-
+            for k, v in feats.items(): row[f'udpipe.feats.{k}'] = v
             for k, v in misc.items():
-                if k != 'NER':
-                    row[f'udpipe.misc.{k}'] = v
+                if k != 'NER': row[f'udpipe.misc.{k}'] = v
 
             current_rows.append(row)
 
-    # Write the final page if any rows remain
     if current_rows:
-        page_id = page_counter
-        write_page_csv(current_rows, output_subdir, page_id, page_counter)
+        write_page_csv(current_rows, output_subdir, page_counter, page_counter)
 
 
-def process_pipeline(conllu_dir, tsv_dir, output_root):
-    """
-    Main pipeline controller.
-    """
+def process_pipeline(conllu_dir, tsv_root, output_root):
     conllu_path_obj = Path(conllu_dir)
-    tsv_path_obj = Path(tsv_dir)
+    tsv_root_obj = Path(tsv_root)
     output_root_obj = Path(output_root)
 
-    # Basic validations
     if not conllu_path_obj.exists():
-        print(f"Error: CoNLL-U directory '{conllu_dir}' does not exist.")
-        sys.exit(1)
-    if not tsv_path_obj.exists():
-        print(f"Error: TSV directory '{tsv_dir}' does not exist.")
+        print(f"Error: CoNLL-U dir not found: {conllu_dir}")
         sys.exit(1)
 
-    # Get file list
     conllu_files = sorted(list(conllu_path_obj.glob('*.conllu')))
-    if not conllu_files:
-        print(f"No .conllu files found in {conllu_dir}")
-        return
+    print(f"Found {len(conllu_files)} documents to process.")
 
-    print(f"Found {len(conllu_files)} documents. Starting pipeline...")
     output_root_obj.mkdir(parents=True, exist_ok=True)
 
     for conllu_file in conllu_files:
         doc_name = conllu_file.stem
 
-        # 1. Prepare Document Output Directory
+        # 1. Define paths
         doc_out_dir = output_root_obj / doc_name
-        doc_out_dir.mkdir(exist_ok=True)
+        doc_tsv_dir = tsv_root_obj / doc_name
 
-        # 2. Identify Matching TSV
-        tsv_file = tsv_path_obj / conllu_file.with_suffix('.tsv').name
-
-        if not tsv_file.exists():
-            print(f"[Skip] Missing TSV for {doc_name}")
+        if not doc_tsv_dir.exists() or not doc_tsv_dir.is_dir():
+            print(f"[Skip] No TSV directory found for: {doc_name} (checked {doc_tsv_dir})")
             continue
 
-        # 3. Merge Step
-        merged_file_path = doc_out_dir / f"{doc_name}_merged.conllu"
-        success = merge_single_pair(conllu_file, tsv_file, merged_file_path)
+        # 2. Count Input vs Output to determine skip
+        # We need to know how many pages exist in the input to compare with output
+        input_tsvs = list(doc_tsv_dir.glob("*.tsv"))
+        count_input = len(input_tsvs)
 
-        if success:
-            # 4. Generate Per-Page CSVs
+        if doc_out_dir.exists():
+            output_csvs = list(doc_out_dir.glob("*.csv"))
+            count_output = len(output_csvs)
+
+            # --- STRICT SKIP LOGIC ---
+            # Only skip if the output count exactly matches input count
+            if count_input > 0 and count_input == count_output:
+                print(f"[Skip] {doc_name}: Output complete ({count_output} CSVs match {count_input} TSVs).")
+                continue
+            elif count_output > 0:
+                print(f"[Reprocess] {doc_name}: Count mismatch (Input: {count_input} vs Output: {count_output}).")
+
+        print(f"[Processing] {doc_name}...")
+
+        # 3. Gather all pages (TSVs) into one stream
+        tsv_data = get_sorted_tsv_content(doc_tsv_dir)
+        if not tsv_data:
+            print(f"  [Warn] No valid TSV data found in {doc_tsv_dir}")
+            continue
+
+        # 4. Create output folder
+        doc_out_dir.mkdir(exist_ok=True)
+
+        # 5. Merge
+        merged_file_path = doc_out_dir / f"{doc_name}_merged.tmp"
+        if merge_and_write(conllu_file, tsv_data, merged_file_path):
+            # 6. Generate CSVs
             process_merged_file_into_pages(merged_file_path, doc_out_dir)
+            # Cleanup temp file
+            try:
+                os.remove(merged_file_path)
+            except:
+                pass
 
     print("\nPipeline Complete.")
 
 
 def main():
-    # 1. Load Defaults from config file
     load_config('api_config.env')
-
-    parser = argparse.ArgumentParser(description="Merge CoNLL-U & TSV, then generate per-page CSV summaries.")
-
-    # 2. Set defaults using os.getenv
-    parser.add_argument('--conllu-dir',
-                        default=os.getenv('CONLLU_INPUT_DIR'),
-                        help="Directory containing input CoNLL-U files (Default: from config)")
-    parser.add_argument('--tsv-dir',
-                        default=os.getenv('TSV_INPUT_DIR'),
-                        help="Directory containing input TSV files (Default: from config)")
-    parser.add_argument('--out-dir',
-                        default=os.getenv('SUMMARY_OUTPUT_DIR'),
-                        help="Root directory for output (Default: from config)")
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--conllu-dir', default=os.getenv('CONLLU_INPUT_DIR'))
+    parser.add_argument('--tsv-dir', default=os.getenv('TSV_INPUT_DIR'))
+    parser.add_argument('--out-dir', default=os.getenv('SUMMARY_OUTPUT_DIR'))
     args = parser.parse_args()
 
-    # 3. Manual Validation because required=True was removed
-    if not args.conllu_dir:
-        parser.error("CoNLL-U directory is required. Set CONLLU_INPUT_DIR in api_config.env or use --conllu-dir.")
-    if not args.tsv_dir:
-        parser.error("TSV directory is required. Set TSV_INPUT_DIR in api_config.env or use --tsv-dir.")
-    if not args.out_dir:
-        parser.error("Output directory is required. Set SUMMARY_OUTPUT_DIR in api_config.env or use --out-dir.")
+    if not all([args.conllu_dir, args.tsv_dir, args.out_dir]):
+        print("Missing arguments. Check config or flags.")
+        sys.exit(1)
 
     process_pipeline(args.conllu_dir, args.tsv_dir, args.out_dir)
 
