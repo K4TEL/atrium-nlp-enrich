@@ -83,9 +83,9 @@ Unlike previous steps, this process is split into modular shell scripts to handl
 
 #### Configuration ⚙️
 
-Before running the pipeline, review the [api_config.env](api_config.env) 📎 file. This file controls directory paths, API endpoints, and model selection.
+Before running the pipeline, review the [api_config.env](config_api.env) 📎 file. This file controls directory paths, API endpoints, and model selection.
 ```bash
-# Example settings in api_config.env
+# Example settings in config_api.env
 INPUT_DIR="../PAGE_TXT"        # Source of text files (from Step 3.1)
 OUTPUT_DIR="../OUT_API"        # Destination for results
 MODEL_UDPIPE="czech-pdt-ud-2.15-241121"

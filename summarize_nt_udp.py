@@ -10,7 +10,7 @@ import re
 csv.field_size_limit(sys.maxsize)
 
 
-def load_config(config_path="api_config.env"):
+def load_config(config_path="config_api.env"):
     """
     Manually parses a simple .env file to set environment variables
     so we don't depend on python-dotenv.
@@ -324,7 +324,7 @@ def process_pipeline(conllu_dir, tsv_dir, output_root):
 
 def main():
     # 1. Load Defaults from config file
-    load_config('api_config.env')
+    load_config('config_api.env')
 
     parser = argparse.ArgumentParser(description="Merge CoNLL-U & TSV, then generate per-page CSV summaries.")
 
@@ -343,11 +343,11 @@ def main():
 
     # 3. Manual Validation because required=True was removed
     if not args.conllu_dir:
-        parser.error("CoNLL-U directory is required. Set CONLLU_INPUT_DIR in api_config.env or use --conllu-dir.")
+        parser.error("CoNLL-U directory is required. Set CONLLU_INPUT_DIR in config_api.env or use --conllu-dir.")
     if not args.tsv_dir:
-        parser.error("TSV directory is required. Set TSV_INPUT_DIR in api_config.env or use --tsv-dir.")
+        parser.error("TSV directory is required. Set TSV_INPUT_DIR in config_api.env or use --tsv-dir.")
     if not args.out_dir:
-        parser.error("Output directory is required. Set SUMMARY_OUTPUT_DIR in api_config.env or use --out-dir.")
+        parser.error("Output directory is required. Set SUMMARY_OUTPUT_DIR in config_api.env or use --out-dir.")
 
     process_pipeline(args.conllu_dir, args.tsv_dir, args.out_dir)
 
