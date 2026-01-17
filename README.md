@@ -84,6 +84,7 @@ Unlike previous steps, this process is split into modular shell scripts to handl
 #### Configuration ⚙️
 
 Before running the pipeline, review the [api_config.env](config_api.env) 📎 file. This file controls directory paths, API endpoints, and model selection.
+
 ```bash
 # Example settings in config_api.env
 INPUT_DIR="../PAGE_TXT"        # Source of text files (from Step 3.1)
@@ -100,32 +101,35 @@ Run the following scripts in sequence. Each script utilizes [api_common.sh](api_
 ##### 1. Generate Manifest
 
 Maps input text files to document IDs and page numbers to ensure correct processing order.
+
 ```bash
 ./api_1_manifest.sh
 ```
 
 * **Input:** `INPUT_DIR` (raw text files in subdirectories).
-* **Output:** `processing_work/manifest.tsv`.
+* **Output:** `TEMP/manifest.tsv`.
 
 ##### 2.UDPipe Processing (Morphology & Syntax)
 
 Sends text to the UDPipe API. Large pages are automatically split into chunks (default 900 words) using 
 [chunk.py](api_util/chunk.py) 📎 to respect API limits, then merged back into valid CoNLL-U files.
+
 ```bash
 ./api_2_udp.sh
 ```
 
-* **Output:** `processing_work/UDPIPE_INTERMEDIATE/*.conllu` (Intermediate CoNLL-U files).
+* **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate CoNLL-U files).
 
 ##### 3. NameTag Processing (NER)
 
 Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
 (NE) directly into the syntax trees.
+
 ```bash
 ./api_3_nt.sh
 ```
 
-* **Output:** `OUTPUT_DIR/CONLLU_FINAL/` (Final annotated files).
+* **Output:** `OUTPUT_DIR/NE/` (Final annotated files).
 
 ##### 4. Generate Statistics
 
@@ -137,7 +141,7 @@ CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geo
 ./api_4_stats.sh
 ```
 
-* **Output:** `OUTPUT_DIR/STATS/summary_ne_counts.csv`.
+* **Output:** `OUTPUT_DIR/summary_ne_counts.csv`.
 
 Example: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
 
@@ -145,24 +149,27 @@ Example: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
 
 After completing the pipeline, your output directory will be organized as follows:
 ```
-processing_work/
-├── UDPIPE_INTERMEDIATE/  # Intermediate CONLL-U files
-│   ├── <doc_id>_part1.conllu
-│   ├── <doc_id>_part2.conllu
+TEMP/
+├── UDPIPE/  
+│   ├── <doc_id>.conllu
+│   ├── <doc_id>.conllu
 │   └── ...
 ├── nametag_response_docname1.conllu.json
-├── nametag_response_docname2.conllu.json
 ├── ...
 └── manifest.tsv
 ```
 AND
 ```
 <OUTPUT_DIR>
-├── CONLLU_FINAL/           # Full linguistic analysis
-│   ├── <doc_id>.conllu     # Parsed sentences with NER tags
+├── UDP_NE/          
+│   ├── <doc_id>-<page_num>.csv     
+│   ├── <doc_id>-<page_num>.csv     
 │   └── ...
-└── STATS/
-    └── summary_ne_counts.csv  # Table of top entities per document
+├── NE/           
+│   ├── <doc_id>-<page_num>.tsv     
+│   ├── <doc_id>-<page_num>.tsv     
+│   └── ...
+└── summary_ne_counts.csv  
 ```
 
 ---
