@@ -1,5 +1,5 @@
 # api_util/analyze.py
-
+import re
 import sys
 import os
 import csv
