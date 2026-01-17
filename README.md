@@ -33,6 +33,9 @@ with extracted linguistic and statistic data.
 
 ### ▶ Step 1: Page-Specific ALTOs Statistics Table and Extracted Text
 
+More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
+processing into TXT and collection of statistics from these files.
+
 First, ensure you have a directory 📁 containing your page-level `<file>.alto.xml` files. 
 
     PAGE_ALTO/
@@ -125,7 +128,7 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 * **Input:** `../PAGE_TXT/` (raw text files in subdirectories).
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 
-* [UDPIPE](data_samples%2FUDPIPE) 📎 example output, CONLLU per-document file
+* [UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
 
 ##### 3. NameTag Processing (NER)
 
@@ -140,7 +143,7 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 * **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 * **Output:** `OUTPUT_DIR/NE/` (NE annotated per-page files)
 
-* [NE](data_samples%2FNE) 📎 example output, per-page TSV files with NE annotations
+* [NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
 
 
 ##### 4. Generate Statistics
@@ -160,7 +163,7 @@ CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geo
 
 Example summary table: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
 
-Example output directory [UDP_NE](data_samples%2FUDP_NE) 📎 containing per-page CSV tables with NE and UDPipe features
+Example output directory [UDP_NE](data_samples%2FUDP_NE) 📁 containing per-page CSV tables with NE and UDPipe features
 
 #### Output Structure
 
