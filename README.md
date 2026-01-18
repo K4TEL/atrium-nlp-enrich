@@ -2,7 +2,7 @@
 
 This project provides a workflow for processing ALTO XML files with NLP services. It takes raw ALTO 
 XMLs and transforms them into structured statistics tables and extracts high-level linguistic features like 
-Named Entities (NER), CONLL-U files with lemmas & part-of-sentence tags.
+Named Entities (NER) with tags and CONLL-U files with lemmas & part-of-sentence tags.
 
 ---
 
@@ -128,7 +128,13 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 * **Input:** `../PAGE_TXT/` (raw text files in subdirectories).
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 
-* [UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
+[UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
+
+> [!TIP]
+> You can launch the next step when a portion of CONLL-U files are ready, 
+> without waiting for the entire input collection to finish. You will have to relaunch 
+> the next step after all CONLL-U files are ready to process the files created after the previous
+> run began.
 
 ##### 3. NameTag Processing (NER)
 
@@ -143,7 +149,7 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 * **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 * **Output:** `OUTPUT_DIR/NE/` (NE annotated per-page files)
 
-* [NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
+[NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
 
 
 ##### 4. Generate Statistics
