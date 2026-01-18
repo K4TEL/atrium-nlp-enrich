@@ -68,7 +68,7 @@ It reads the CSV with stats and process paths into output text files.
 * **Output:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
 * **Output:** `../PAGE_TXT/` (directory containing per-page raw text files)
 
-
+```
     PAGE_TXT/
     ├── <file1>
         ├── <file1>-<page>.txt 
@@ -77,6 +77,7 @@ It reads the CSV with stats and process paths into output text files.
         ├── <file2>-<page>.txt 
         └── ...
     └── ...
+```
 
 ### ▶ Step 2: Extract NER and CONLL-U
 
@@ -167,7 +168,7 @@ CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geo
 * **Output:** `OUTPUT_DIR/summary_ne_counts.csv`.
 * **Output:** `OUTPUT_DIR/UDP_NE/` (per-page CSV files with NE and UDPipe features).
 
-Example summary table: [summary_ne_counts.csv](summary_ne_counts.csv) 📎.
+Example summary table: [summary_ne_counts.csv](data_samples/summary_ne_counts.csv) 📎.
 
 Example output directory [UDP_NE](data_samples%2FUDP_NE) 📁 containing per-page CSV tables with NE and UDPipe features
 
