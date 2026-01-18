@@ -64,7 +64,7 @@ for each page (e.g. `alto_statistics.csv`):
 
 The next part of the script runs in parallel (using multiple **CPU** cores) to extract text from 
 ALTO XMLs into `.txt` files. It reads the CSV with stats and process paths into output text files. 
-The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
+The extraction is powered by the **alto-tools** framework [^1].
 
 
 * **Input:** `../PAGE_ALTO/` (directory containing per-page ALTO XML files)
@@ -84,7 +84,7 @@ PAGE_TXT/
 
 > [!TIP]
 > More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
-> processing into TXT and collection of statistics and keywords from these files. 
+> processing into TXT and collection of statistics and keywords from these files [^2]. 
 
 ### ▶ Step 2: Extract NER and CONLL-U
 
@@ -147,7 +147,7 @@ which returns the total number of lines (pages) in the manifest (including the h
 
 ##### 2. UDPipe Processing (Morphology & Syntax)
 
-Sends text to the UDPipe API. Large pages are automatically split into chunks (default 900 words) using 
+Sends text to the UDPipe API [^5]. Large pages are automatically split into chunks (default 900 words) using 
 [chunk.py](api_util/chunk.py) 📎 to respect API limits, then merged back into valid CoNLL-U files.
 
 ```bash
@@ -166,7 +166,7 @@ ls -l TEMP/UDPIPE/ | wc -l
 which returns the total number of CoNLL-U files created (each file corresponds to a document).
 
 
-Example output directory[UDPIPE](data_samples%2FUDPIPE) 📁 contains per-document CoNLL-U files.
+Example output directory [UDPIPE](data_samples%2FUDPIPE) 📁 contains per-document CoNLL-U files.
 
 > [!TIP]
 > You can launch the next step when a portion of CoNLL-U files are ready, 
@@ -176,7 +176,7 @@ Example output directory[UDPIPE](data_samples%2FUDPIPE) 📁 contains per-docume
 
 ##### 3. NameTag Processing (NER tags)
 
-Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
+Takes the valid CoNLL-U files and passes them through the NameTag API [^6] to annotate Named Entities 
 (NE) directly into the syntax trees.
 
 ```bash
@@ -194,10 +194,7 @@ ls -l OUTPUT_DIR/NE | wc -l
 ```
 which returns the total number of directories created (each subfolder corresponds to a document).
 
-
-
-Example output directory [NE](data_samples%2FNE) 📁 contains per-page TSV files with NE annotations.
-
+Example output directory [NE](data_samples%2FNE) 📁 contains per-page TSV files with NE annotations, where the NE tags follow the CNEC 2.0 standard [^3] which is used in the Czech Nametag model.
 
 ##### 4. Generate Statistics
 
@@ -286,6 +283,11 @@ the entire `TEMP/` directory including [manifest.tsv](data_samples/manifest.tsv)
 
 **©️ 2025 UFAL & ATRIUM**
 
+[^1]: https://github.com/cneud/alto-tools
+[^2]: https://github.com/K4TEL/atrium-alto-postprocess
+[^3]: https://ufal.mff.cuni.cz/~strakova/cnec2.0/ne-type-hierarchy.pdf
 [^4]: https://atrium-research.eu/
-[^8]: https://github.com/ufal/atrium-alto-postprocess
+[^5]: https://lindat.mff.cuni.cz/services/udpipe/api-reference.php
+[^6]: https://lindat.mff.cuni.cz/services/nametag/api-reference.php
+[^8]: https://github.com/K4TEL/atrium-nlp-enrich
 [^7]: https://ufal.mff.cuni.cz/home-page
