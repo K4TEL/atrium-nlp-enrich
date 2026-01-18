@@ -33,7 +33,11 @@ with extracted linguistic and statistic data.
 
 ### ▶ Step 1: Prepare text files from Page-Specific ALTOs
 
-First, ensure you have a directory 📁 containing your page-level `<file>.alto.xml` files. 
+> [!IMPORTANT]
+> If you already have a directory of extracted text files from ALTO XMLs, 
+> you can skip Step 1 and proceed directly to Step 2.
+
+First, ensure you have a directory 📁 containing your page-level `<file>.alto.xml` files: 
 ```
 PAGE_ALTO/
 ├── <file1>
@@ -44,25 +48,27 @@ PAGE_ALTO/
 │   └── ...
 └── ...
 ```
-Each page-specific file retains the header from its original source document.
+Each page-specific file retains the header from its original source document. Then run:
 
     python3 api_0_extract_TXT.py
 
-Next, the script uses the directory as input to generate a 
-foundational CSV statistics file, capturing metadata for each page:
+The script uses the directory as input to generate a foundational CSV 
+statistics file, capturing metadata (counts of XML elements like texts, graphics, etc) 
+for each page (e.g. `alto_statistics.csv`):
 
     file, page, textlines, illustrations, graphics, strings, path
     CTX200205348, 1, 33, 1, 10, 163, /lnet/.../A-PAGE/CTX200205348/CTX200205348-1.alto.xml
     CTX200205348, 2, 0, 1, 12, 0, /lnet/.../A-PAGE/CTX200205348/CTX200205348-2.alto.xml
     ...
 
+
+The next part of the script runs in parallel (using multiple **CPU** cores) to extract text from 
+ALTO XMLs into `.txt` files. It reads the CSV with stats and process paths into output text files. 
 The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
 
-Then the next part of the script runs in parallel (using multiple **CPU** cores) to extract text from ALTO XMLs into `.txt` files. 
-It reads the CSV with stats and process paths into output text files.
 
 * **Input:** `../PAGE_ALTO/` (directory containing per-page ALTO XML files)
-* **Output 1:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
+* **Output 1:** `alto_statistics.csv` (table of page-level statistics and ALTO file paths)
 * **Output 2:** `../PAGE_TXT/` (directory containing per-page raw text files)
 
 ```
@@ -76,12 +82,9 @@ PAGE_TXT/
 └── ...
 ```
 
-More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
-processing into TXT and collection of statistics from these files. 
-
-> [!IMPORTANT]
-> If you already have a directory of extracted text files from ALTO XMLs, 
-> you can skip Step 1 and proceed directly to Step 2.
+> [!TIP]
+> More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
+> processing into TXT and collection of statistics and keywords from these files. 
 
 ### ▶ Step 2: Extract NER and CONLL-U
 
@@ -100,15 +103,27 @@ directory paths, API endpoints, and model selection.
 # Example settings in config_api.env
 INPUT_DIR="../PAGE_TXT"        # Source of text files (from Step 3.1)
 OUTPUT_DIR="../OUT_API"        # Destination for results
+WORK_DIR="./TEMP"              # Working directory for intermediate files
+
+LOG_FILE="$OUTPUT_DIR/processing.log"
+
+CONLLU_INPUT_DIR="./TEMP/UDPIPE"
+TSV_INPUT_DIR="../../OUT_API/NE"
+SUMMARY_OUTPUT_DIR="../../OUT_API/NE_UDP"
+
 MODEL_UDPIPE="czech-pdt-ud-2.15-241121"
 MODEL_NAMETAG="nametag3-czech-cnec2.0-240830"
+
 WORD_CHUNK_LIMIT=900           # Word limit per API call
+TIMEOUT=60                     # API call timeout in seconds
+MAX_RETRIES=5                  # Number of retries for failed API calls
 ```
 
 #### Execution Pipeline
 
 Run the following scripts in sequence. Each script utilizes [api_common.sh](api_util/api_common.sh) 📎 for logging, 
-retry logic, and error handling.
+retry logic, and error handling for API calls. Additionally, [api_util/](api_util/) 📁 contains 
+helper Python scripts for chunking and analysis.
 
 ##### 1. Generate Manifest
 
@@ -121,11 +136,16 @@ Maps input text files to document IDs and page numbers to ensure correct process
 * **Input:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/manifest.tsv`.
 
-Example manifest file: [manifest.tsv](data_samples/manifest.tsv) 📎 with **file**, **page**
+Example output file [manifest.tsv](data_samples/manifest.tsv) 📎 with **file**, **page**
 number, and **path** columns. It lists all text files to be processed in the next steps.
+Run the following command to see how many pages will be processed:
 
+```bash
+wc -l TEMP/manifest.tsv
+```
+which returns the total number of lines (pages) in the manifest (including the header line).
 
-##### 2.UDPipe Processing (Morphology & Syntax)
+##### 2. UDPipe Processing (Morphology & Syntax)
 
 Sends text to the UDPipe API. Large pages are automatically split into chunks (default 900 words) using 
 [chunk.py](api_util/chunk.py) 📎 to respect API limits, then merged back into valid CoNLL-U files.
@@ -138,15 +158,23 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 * **Input 2:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 
-[UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
+Run the following command to see how many documents have been processed into CoNLL-U files:
+
+```bash
+ls -l TEMP/UDPIPE/ | wc -l
+```
+which returns the total number of CoNLL-U files created (each file corresponds to a document).
+
+
+Example output directory[UDPIPE](data_samples%2FUDPIPE) 📁 contains per-document CoNLL-U files.
 
 > [!TIP]
-> You can launch the next step when a portion of CONLL-U files are ready, 
+> You can launch the next step when a portion of CoNLL-U files are ready, 
 > without waiting for the entire input collection to finish. You will have to relaunch 
-> the next step after all CONLL-U files are ready to process the files created after the previous
+> the next step after all CoNLL-U files are ready to process the files created after the previous
 > run began.
 
-##### 3. NameTag Processing (NER)
+##### 3. NameTag Processing (NER tags)
 
 Takes the valid CoNLL-U files and passes them through the NameTag API to annotate Named Entities 
 (NE) directly into the syntax trees.
@@ -159,7 +187,16 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 * **Input 2:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 * **Output:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files)
 
-[NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
+Run the following command to see how many documents have been processed into TSV files:
+
+```bash
+ls -l OUTPUT_DIR/NE | wc -l
+```
+which returns the total number of directories created (each subfolder corresponds to a document).
+
+
+
+Example output directory [NE](data_samples%2FNE) 📁 contains per-page TSV files with NE annotations.
 
 
 ##### 4. Generate Statistics
@@ -177,9 +214,17 @@ into human-readable categories (e.g., "Geographical name", "First name", "Compan
 * **Output 1:** `OUTPUT_DIR/summary_ne_counts.csv`.
 * **Output 2:** `OUTPUT_DIR/UDP_NE/*/*.csv` (per-page CSV files with NE and UDPipe features).
 
+Run the following command to see how many documents have been processed into CSV files:
+
+```bash
+ls -l OUTPUT_DIR/UDP_NE | wc -l
+```
+which returns the total number of directories created (each subfolder corresponds to a document).
+
+
 Example summary table: [summary_ne_counts.csv](data_samples/summary_ne_counts.csv) 📎.
 
-Example output directory [UDP_NE](data_samples%2FUDP_NE) 📁 containing per-page CSV tables with NE and UDPipe features
+Example output directory [UDP_NE](data_samples%2FUDP_NE) 📁 contains per-page CSV tables with NE tag and columns for UDPipe features.
 
 #### Output Structure
 
