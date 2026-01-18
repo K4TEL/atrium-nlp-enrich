@@ -31,25 +31,24 @@ You are now ready to start the workflow.
 The process is divided into sequential steps, starting from raw ALTO files and ending 
 with extracted linguistic and statistic data.
 
-### ▶ Step 1: Page-Specific ALTOs Statistics Table and Extracted Text
-
-More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
-processing into TXT and collection of statistics from these files.
+### ▶ Step 1: Prepare text files from Page-Specific ALTOs
 
 First, ensure you have a directory 📁 containing your page-level `<file>.alto.xml` files. 
-
-    PAGE_ALTO/
-    ├── <file1>
-        ├── <file1>-<page>.alto.xml 
-        └── ...
-    ├── <file2>
-        ├── <file2>-<page>.alto.xml 
-        └── ...
-    └── ...
-
+```
+PAGE_ALTO/
+├── <file1>
+│   ├── <file1>-<page>.alto.xml 
+│   └── ...
+├── <file2>
+│   ├── <file2>-<page>.alto.xml 
+│   └── ...
+└── ...
+```
 Each page-specific file retains the header from its original source document.
 
-Next, use the directory the input for this script to generate a 
+    python3 api_0_extract_TXT.py
+
+Next, the script uses the directory as input to generate a 
 foundational CSV statistics file, capturing metadata for each page:
 
     file, page, textlines, illustrations, graphics, strings, path
@@ -59,35 +58,43 @@ foundational CSV statistics file, capturing metadata for each page:
 
 The extraction is powered by the [alto-tools](https://github.com/cneud/alto-tools) 🔗 framework.
 
-Then the script runs in parallel (using multiple **CPU** cores) to extract text from ALTO XMLs into `.txt` files. 
+Then the next part of the script runs in parallel (using multiple **CPU** cores) to extract text from ALTO XMLs into `.txt` files. 
 It reads the CSV with stats and process paths into output text files.
-
-    python3 api_0_extract_TXT.py
 
 * **Input:** `../PAGE_ALTO/` (directory containing per-page ALTO XML files)
 * **Output:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
 * **Output:** `../PAGE_TXT/` (directory containing per-page raw text files)
 
 ```
-    PAGE_TXT/
-    ├── <file1>
-        ├── <file1>-<page>.txt 
-        └── ...
-    ├── <file2>
-        ├── <file2>-<page>.txt 
-        └── ...
-    └── ...
+PAGE_TXT/
+├── <file1>
+│   ├── <file1>-<page>.txt 
+│   └── ...
+├── <file2>
+│   ├── <file2>-<page>.txt 
+│   └── ...
+└── ...
 ```
+
+More about this step ypu can find in [GitHub repository](https://github.com/K4TEL/atrium-alto-postprocess.git) of ATRIUM project dedicated to ALTO XML
+processing into TXT and collection of statistics from these files. 
+
+> [!IMPORTANT]
+> If you already have a directory of extracted text files from ALTO XMLs, 
+> you can skip Step 1 and proceed directly to Step 2.
 
 ### ▶ Step 2: Extract NER and CONLL-U
 
-This stage performs advanced NLP analysis using external APIs (Lindat/CLARIAH-CZ) to generate Universal Dependencies (CoNLL-U) and Named Entity Recognition (NER) data.
+This stage performs advanced NLP analysis using external APIs (Lindat/CLARIAH-CZ) 
+to generate Universal Dependencies (CoNLL-U) and Named Entity Recognition (NER) data.
 
-Unlike previous steps, this process is split into modular shell scripts to handle large-scale processing, text chunking, and API rate limiting.
+Unlike previous steps, this process is split into modular shell scripts to handle large-scale 
+processing, text chunking, and API rate limiting.
 
 #### Configuration ⚙️
 
-Before running the pipeline, review the [api_config.env](config_api.env) 📎 file. This file controls directory paths, API endpoints, and model selection.
+Before running the pipeline, review the [api_config.env](config_api.env) 📎 file. This file controls 
+directory paths, API endpoints, and model selection.
 
 ```bash
 # Example settings in config_api.env
@@ -100,7 +107,8 @@ WORD_CHUNK_LIMIT=900           # Word limit per API call
 
 #### Execution Pipeline
 
-Run the following scripts in sequence. Each script utilizes [api_common.sh](api_util/api_common.sh) 📎 for logging, retry logic, and error handling.
+Run the following scripts in sequence. Each script utilizes [api_common.sh](api_util/api_common.sh) 📎 for logging, 
+retry logic, and error handling.
 
 ##### 1. Generate Manifest
 
@@ -110,7 +118,7 @@ Maps input text files to document IDs and page numbers to ensure correct process
 ./api_1_manifest.sh
 ```
 
-* **Input:** `../PAGE_TXT/` (raw text files in subdirectories).
+* **Input:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/manifest.tsv`.
 
 Example manifest file: [manifest.tsv](data_samples/manifest.tsv) 📎 with **file**, **page** number, and **path** columns.
@@ -126,7 +134,7 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 ```
 
 * **Input:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
-* **Input:** `../PAGE_TXT/` (raw text files in subdirectories).
+* **Input:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 
 [UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
@@ -148,7 +156,7 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 
 * **Input:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
 * **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
-* **Output:** `OUTPUT_DIR/NE/` (NE annotated per-page files)
+* **Output:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files)
 
 [NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
 
@@ -163,10 +171,10 @@ CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geo
 ./api_4_stats.sh
 ```
 
-* **Input:** `OUTPUT_DIR/NE/` (NE annotated per-page files).
+* **Input:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files).
 * **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 * **Output:** `OUTPUT_DIR/summary_ne_counts.csv`.
-* **Output:** `OUTPUT_DIR/UDP_NE/` (per-page CSV files with NE and UDPipe features).
+* **Output:** `OUTPUT_DIR/UDP_NE/*/*.csv` (per-page CSV files with NE and UDPipe features).
 
 Example summary table: [summary_ne_counts.csv](data_samples/summary_ne_counts.csv) 📎.
 
@@ -174,7 +182,7 @@ Example output directory [UDP_NE](data_samples%2FUDP_NE) 📁 containing per-pag
 
 #### Output Structure
 
-After completing the pipeline, your output directory will be organized as follows:
+After completing the pipeline, your working and output directories will be organized as follows:
 ```
 TEMP/
 ├── UDPIPE/  
@@ -191,16 +199,34 @@ AND
 ```
 <OUTPUT_DIR>
 ├── UDP_NE/          
-│   ├── <doc_id>-<page_num>.csv     
-│   ├── <doc_id>-<page_num>.csv     
+│   ├── <doc_id>     
+│   │   ├── <doc_id>-<page_num>.csv     
+│   │   └── ...     
+│   ├── <doc_id>     
+│   │   ├── <doc_id>-<page_num>.csv     
+│   │   └── ...
 │   └── ...
 ├── NE/           
-│   ├── <doc_id>-<page_num>.tsv     
-│   ├── <doc_id>-<page_num>.tsv     
+│   ├── <doc_id>     
+│   │   ├── <doc_id>-<page_num>.tsv     
+│   │   └── ...     
+│   ├── <doc_id>     
+│   │   ├── <doc_id>-<page_num>.tsv     
+│   │   └── ...
 │   └── ...
 ├── processing.log
 └── summary_ne_counts.csv  
 ```
+
+The combined output [summary_ne_counts.csv](data_samples/summary_ne_counts.csv) 📎 contains aggregated Named Entity 
+statistics across all processed pages.
+
+> [!NOTE]
+> Now you can delete `UDPIPE/` from `TEMP/` if you no longer need the raw CoNLL-U files.
+> The final per-page CSV files with UDPipe features are in `<OUTPUT_DIR>/UDP_NE/`.
+
+If you do not plan to rerun any part of the pipeline, you can also delete 
+the entire `TEMP/` directory including [manifest.tsv](data_samples/manifest.tsv) 📎.
 
 ---
 
