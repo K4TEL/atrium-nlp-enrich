@@ -62,8 +62,8 @@ Then the next part of the script runs in parallel (using multiple **CPU** cores)
 It reads the CSV with stats and process paths into output text files.
 
 * **Input:** `../PAGE_ALTO/` (directory containing per-page ALTO XML files)
-* **Output:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
-* **Output:** `../PAGE_TXT/` (directory containing per-page raw text files)
+* **Output 1:** `alto_statistics.csv/` (table of page-level statistics and ALTO file paths)
+* **Output 2:** `../PAGE_TXT/` (directory containing per-page raw text files)
 
 ```
 PAGE_TXT/
@@ -121,7 +121,8 @@ Maps input text files to document IDs and page numbers to ensure correct process
 * **Input:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/manifest.tsv`.
 
-Example manifest file: [manifest.tsv](data_samples/manifest.tsv) 📎 with **file**, **page** number, and **path** columns.
+Example manifest file: [manifest.tsv](data_samples/manifest.tsv) 📎 with **file**, **page**
+number, and **path** columns. It lists all text files to be processed in the next steps.
 
 
 ##### 2.UDPipe Processing (Morphology & Syntax)
@@ -133,8 +134,8 @@ Sends text to the UDPipe API. Large pages are automatically split into chunks (d
 ./api_2_udp.sh
 ```
 
-* **Input:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
-* **Input:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
+* **Input 1:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
+* **Input 2:** `../PAGE_TXT/` (raw text files in subdirectories from Step 1).
 * **Output:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 
 [UDPIPE](data_samples%2FUDPIPE) 📁 example output, CONLLU per-document file
@@ -154,8 +155,8 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 ./api_3_nt.sh
 ```
 
-* **Input:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
-* **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
+* **Input 1:** `TEMP/manifest.tsv` (mapping of text files to document IDs and page numbers).
+* **Input 2:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
 * **Output:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files)
 
 [NE](data_samples%2FNE) 📁 example output, per-page TSV files with NE annotations
@@ -164,17 +165,17 @@ Takes the valid CoNLL-U files and passes them through the NameTag API to annotat
 ##### 4. Generate Statistics
 
 Aggregates the entity counts from the final CoNLL-U files into a summary CSV. It utilizes 
-[analyze.py](api_util/analyze.py) 📎 to map complex 
-CNEC 2.0 tags (e.g., `g`, `pf`, `if`) into human-readable categories (e.g., "Geographical name", "First name", "Company/Firm").
+[analyze.py](api_util/analyze.py) 📎 to map complex CNEC 2.0 tags (e.g., `g`, `pf`, `if`) 
+into human-readable categories (e.g., "Geographical name", "First name", "Company/Firm").
 
 ```bash
 ./api_4_stats.sh
 ```
 
-* **Input:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files).
-* **Input:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
-* **Output:** `OUTPUT_DIR/summary_ne_counts.csv`.
-* **Output:** `OUTPUT_DIR/UDP_NE/*/*.csv` (per-page CSV files with NE and UDPipe features).
+* **Input 1:** `OUTPUT_DIR/NE/*/*.tsv` (NE annotated per-page files).
+* **Input 2:** `TEMP/UDPIPE/*.conllu` (Intermediate per-document CoNLL-U files).
+* **Output 1:** `OUTPUT_DIR/summary_ne_counts.csv`.
+* **Output 2:** `OUTPUT_DIR/UDP_NE/*/*.csv` (per-page CSV files with NE and UDPipe features).
 
 Example summary table: [summary_ne_counts.csv](data_samples/summary_ne_counts.csv) 📎.
 
